@@ -19,7 +19,8 @@ st.set_page_config(page_title="Fitness OS Pro", layout="wide", page_icon="⚡")
 def init_connections():
     sb = create_client(S_URL, S_KEY)
     genai.configure(api_key=G_KEY)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # Cambiamos a 'gemini-pro' que tiene mayor compatibilidad con v1
+    model = genai.GenerativeModel('gemini-pro')
     return sb, model
 
 supabase, gemini_model = init_connections()
@@ -69,7 +70,6 @@ if selected == "Dashboard":
 
 elif selected == "Entrenamientos":
     st.header("Registrar Nueva Sesión")
-    # Verificamos si existe el perfil para poder asignar el entrenamiento
     check_profile = supabase.table("profiles").select("username").eq("username", user_input).execute()
     if not check_profile.data:
         st.error("❌ Primero debes crear tu perfil en la pestaña 'Ajustes'.")
@@ -108,10 +108,16 @@ elif selected == "Nutrición":
             c4.metric("Grasas", f"{m['f']:.0f}g")
             
             if st.button("Generar Dieta con IA"):
-                with st.spinner("Analizando requerimientos..."):
-                    prompt = f"Nutricionista: Dieta de {m['cal']:.0f} kcal. Macros: P:{m['p']:.0f}g, C:{m['c']:.0f}g, F:{m['f']:.0f}g. Estilo: {profile['diet_type']}. Formato: Markdown."
-                    resp = gemini_model.generate_content(prompt)
-                    st.markdown(resp.text)
+                with st.spinner("Analizando requerimientos con Gemini..."):
+                    prompt = f"Actúa como nutricionista. Dieta de {m['cal']:.0f} kcal. Macros: P:{m['p']:.0f}g, C:{m['c']:.0f}g, F:{m['f']:.0f}g. Tipo: {profile['diet_type']}. Formato: Tabla Markdown."
+                    # Usamos un try/except interno para la IA
+                    try:
+                        resp = gemini_model.generate_content(prompt)
+                        st.markdown(resp.text)
+                    except Exception as ai_err:
+                        st.error(f"Error de la IA: {ai_err}")
+                        st.info("Intenta verificar que tu API Key sea válida para el modelo gemini-pro.")
+
     except Exception as e:
         st.error(f"Error en Nutrición: {e}")
 
@@ -129,18 +135,16 @@ elif selected == "Ajustes":
         h = col2.number_input("Altura (cm)", 100.0, 250.0, float(curr.get('height', 175)))
         a = col1.number_input("Edad", 15, 100, int(curr.get('age', 25)))
         g = col2.selectbox("Género", ["Masculino", "Femenino"], index=0 if curr.get('gender')=="Masculino" else 1)
+        
+        # Slider mejorado para que entiendas los valores
         act = st.select_slider(
-    "Nivel de Actividad Diaria",
-    options=[1.2, 1.375, 1.55, 1.725],
-    value=float(curr.get('activity_level', 1.2)),
-    format_func=lambda x: {
-        1.2: "Sedentario (Oficina/Sin ejercicio)",
-        1.375: "Ligero (Entreno 1-2 días)",
-        1.55: "Moderado (Entreno 3-5 días)",
-        1.725: "Intenso (Atleta/Trabajo físico)"
-    }[x]
-)
-        diet = st.text_input("Tipo de Dieta (ej: Vegana)", curr.get('diet_type', 'Omnívora'))
+            "Nivel de Actividad Diaria",
+            options=[1.2, 1.375, 1.55, 1.725],
+            value=float(curr.get('activity_level', 1.2)),
+            format_func=lambda x: {1.2: "Sedentario", 1.375: "Ligero", 1.55: "Moderado", 1.725: "Intenso"}[x]
+        )
+        
+        diet = st.text_input("Tipo de Dieta (ej: Vegana, Keto)", curr.get('diet_type', 'Omnívora'))
         
         if st.form_submit_button("Guardar Perfil"):
             supabase.table("profiles").upsert({
