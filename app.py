@@ -9,7 +9,7 @@ from datetime import datetime
 # --- CREDENCIALES ---
 S_URL = "https://hffrbskyjwmkurwwdzcj.supabase.co"
 S_KEY = "sb_publishable_H8uLitl0KwczBr2owTbTTA_uPCFoXGd"
-G_KEY = "AIzaSyBm_tP0SlIJ86ERXcxMPZSvA7pEnfiPrqw"
+G_KEY = "AIzaSyDzTgUsV45HNTDeqvBGzN8nbuax6dO35d4"
 
 st.set_page_config(page_title="Fitness OS Pro", layout="wide", page_icon="⚡")
 
