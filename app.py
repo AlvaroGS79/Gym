@@ -29,7 +29,7 @@ def init_connections() -> tuple[Client, Any]:
 supabase, gemini_model = init_connections()
 
 # ID de prueba (Debe ser un formato UUID válido)
-USER_ID = "00000000-0000-0000-0000-000000000000"
+USER_ID = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
 
 # --- 3. FUNCIONES DE APOYO ---
 def calculate_macros(w, h, a, g, act, goal):
