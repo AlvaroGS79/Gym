@@ -7,122 +7,134 @@ from streamlit_option_menu import option_menu
 from datetime import datetime
 from typing import Dict, Any
 
-# --- 1. VERIFICACIÓN DE SECRETOS ---
-def check_secrets():
-    required = ["SUPABASE_URL", "SUPABASE_KEY", "GEMINI_API_KEY"]
-    missing = [k for k in required if k not in st.secrets]
-    if missing:
-        st.error(f"Faltan secretos en el archivo TOML: {', '.join(missing)}")
-        st.info("Asegúrate de que 'secrets.toml' esté dentro de una carpeta llamada '.streamlit'")
-        st.stop()
+# --- CONFIGURACIÓN DE CREDENCIALES (HARDCODED) ---
+# Nota: Esto es solo para depuración. No compartas este archivo públicamente.
+S_URL = "https://hffrbskyjwmkurwwdzcj.supabase.co"
+S_KEY = "sb_publishable_H8uLitl0KwczBr2owTbTTA_uPCFoXGd"
+G_KEY = "AIzaSyBm_tP0SlIJ86ERXcxMPZSvA7pEnfiPrqw"
 
-check_secrets()
+# --- CONFIGURACIÓN DE PÁGINA ---
+st.set_page_config(page_title="Fitness OS Ultimate", layout="wide", page_icon="🔥")
 
-# --- 2. INICIALIZACIÓN ---
+# --- INICIALIZACIÓN DE CLIENTES ---
 @st.cache_resource
 def init_connections() -> tuple[Client, Any]:
-    sb = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    # Conexión directa usando las variables de arriba
+    sb = create_client(S_URL, S_KEY)
+    genai.configure(api_key=G_KEY)
     model = genai.GenerativeModel('gemini-1.5-flash')
     return sb, model
 
-supabase, gemini_model = init_connections()
+try:
+    supabase, gemini_model = init_connections()
+except Exception as e:
+    st.error(f"Error crítico de conexión: {e}")
+    st.stop()
 
-# ID de prueba (Debe ser un formato UUID válido)
+# ID de usuario persistente para pruebas
 USER_ID = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
 
-# --- 3. FUNCIONES DE APOYO ---
+# --- LÓGICA DE NEGOCIO ---
 def calculate_macros(w, h, a, g, act, goal):
     bmr = (10 * w) + (6.25 * h) - (5 * a) + (5 if g == "Masculino" else -161)
     tdee = bmr * act
     adj = {"Perder Grasa": -500, "Mantener": 0, "Ganar Músculo": 400}
     target = tdee + adj.get(goal, 0)
-    return {"cal": target, "p": w * 2.0, "f": w * 0.8, "c": (target - (w*2*4) - (w*0.8*9))/4}
+    # Proteína: 2g/kg, Grasa: 0.8g/kg, Resto: Carbohidratos
+    p = w * 2.0
+    f = w * 0.8
+    c = (target - (p * 4) - (f * 9)) / 4
+    return {"cal": target, "p": p, "f": f, "c": c}
 
-# --- 4. NAVEGACIÓN ---
+# --- NAVEGACIÓN ---
 with st.sidebar:
     selected = option_menu("Fitness OS", ["Dashboard", "Entrenamientos", "Nutrición", "Ajustes"], 
                           icons=['house', 'activity', 'egg', 'gear'])
 
-# --- 5. VISTAS ---
+# --- VISTAS ---
 if selected == "Dashboard":
     st.header("Visualización de Progreso")
-    
     try:
-        # Consulta segura
         res = supabase.table("workouts").select("*").eq("user_id", USER_ID).order("date").execute()
         if res.data:
             df = pd.DataFrame(res.data)
-            fig = px.line(df, x="date", y="weight_kg", color="exercise", markers=True)
+            fig = px.line(df, x="date", y="weight_kg", color="exercise", markers=True, template="plotly_dark")
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("No hay entrenamientos. ¡Registra el primero!")
+            st.info("No hay datos. Registra tu primer entrenamiento en la pestaña correspondiente.")
     except Exception as e:
-        st.error(f"Error de conexión con la base de datos: {e}")
+        st.error(f"Error al leer de Supabase: {e}")
 
 elif selected == "Entrenamientos":
-    st.header("Nuevo Registro")
+    st.header("Registro de Entrenamiento")
     with st.form("workout_form", clear_on_submit=True):
         c1, c2 = st.columns(2)
-        ex = c1.text_input("Ejercicio")
+        ex = c1.text_input("Ejercicio (ej: Press de Banca)")
         dt = c2.date_input("Fecha", datetime.now())
         s, r, w = st.columns(3)
         sets = s.number_input("Series", 1, 10, 3)
-        reps = r.number_input("Reps", 1, 50, 10)
-        weight = w.number_input("Peso (kg)", 0.0, 500.0, 60.0)
+        reps = r.number_input("Repeticiones", 1, 50, 10)
+        weight = w.number_input("Carga (kg)", 0.0, 500.0, 60.0)
         
-        if st.form_submit_button("Registrar"):
+        if st.form_submit_button("Guardar Registro"):
             try:
                 supabase.table("workouts").insert({
                     "user_id": USER_ID, "exercise": ex, "date": str(dt), 
                     "sets": sets, "reps": reps, "weight_kg": weight
                 }).execute()
-                st.toast("Guardado correctamente", icon="✅")
+                st.toast("¡Entrenamiento guardado!", icon="💪")
             except Exception as e:
-                st.error(f"Error al guardar: {e}")
+                st.error(f"Error al insertar datos: {e}")
 
 elif selected == "Nutrición":
-    st.header("Dieta IA")
+    st.header("Planificación Dietética IA")
     try:
-        profile = supabase.table("profiles").select("*").eq("id", USER_ID).single().execute().data
+        profile_res = supabase.table("profiles").select("*").eq("id", USER_ID).single().execute()
+        profile = profile_res.data
+        
         if not profile:
-            st.warning("Configura tu perfil en Ajustes primero.")
+            st.warning("⚠️ Debes configurar tu perfil en 'Ajustes' antes de generar una dieta.")
         else:
             goal = st.selectbox("Objetivo", ["Perder Grasa", "Mantener", "Ganar Músculo"])
             m = calculate_macros(profile['weight'], profile['height'], profile['age'], profile['gender'], profile['activity_level'], goal)
             
-            st.write(f"### Calorías Objetivo: {m['cal']:.0f} kcal")
-            if st.button("Generar Plan"):
-                with st.spinner("Cocinando..."):
-                    prompt = f"Dieta de {m['cal']:.0f} kcal. Tipo: {profile['diet_type']}. Alergias: {profile['allergies']}. Formato: Tabla."
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Kcal", f"{m['cal']:.0f}")
+            c2.metric("Proteína", f"{m['p']:.0f}g")
+            c3.metric("Carbs", f"{m['c']:.0f}g")
+            c4.metric("Grasas", f"{m['f']:.0f}g")
+            
+            if st.button("Generar Dieta con Gemini"):
+                with st.spinner("Generando plan personalizado..."):
+                    prompt = f"Actúa como nutricionista. Dieta de {m['cal']:.0f} kcal. Macros: P:{m['p']:.0f}g, C:{m['c']:.0f}g, F:{m['f']:.0f}g. Dieta: {profile.get('diet_type', 'Omnívora')}. Alergias: {profile.get('allergies', 'Ninguna')}. Formato: Tabla Markdown."
                     resp = gemini_model.generate_content(prompt)
                     st.markdown(resp.text)
-    except Exception:
-        st.error("Error al obtener perfil. ¿Has guardado tus datos en Ajustes?")
+    except Exception as e:
+        st.error(f"Error en el módulo de nutrición: {e}")
 
 elif selected == "Ajustes":
-    st.header("Perfil")
-    # Intentar cargar datos actuales de forma segura
+    st.header("Ajustes de Usuario")
     try:
-        curr = supabase.table("profiles").select("*").eq("id", USER_ID).single().execute().data or {}
+        curr_res = supabase.table("profiles").select("*").eq("id", USER_ID).execute()
+        curr = curr_res.data[0] if curr_res.data else {}
     except:
         curr = {}
 
-    with st.form("settings"):
-        c1, c2 = st.columns(2)
-        w = c1.number_input("Peso (kg)", 30.0, 200.0, float(curr.get('weight', 75)))
-        h = c2.number_input("Altura (cm)", 100.0, 250.0, float(curr.get('height', 175)))
-        a = c1.number_input("Edad", 15, 90, int(curr.get('age', 25)))
-        g = c2.selectbox("Género", ["Masculino", "Femenino"])
-        act = st.select_slider("Actividad", [1.2, 1.375, 1.55, 1.725], value=float(curr.get('activity_level', 1.2)))
-        diet = st.text_input("Tipo de Dieta (Omnívora, Vegana...)", curr.get('diet_type', 'Omnívora'))
+    with st.form("settings_form"):
+        col1, col2 = st.columns(2)
+        w_val = col1.number_input("Peso (kg)", 30.0, 200.0, float(curr.get('weight', 75)))
+        h_val = col2.number_input("Altura (cm)", 100.0, 250.0, float(curr.get('height', 175)))
+        a_val = col1.number_input("Edad", 15, 100, int(curr.get('age', 25)))
+        g_val = col2.selectbox("Género", ["Masculino", "Femenino"], index=0 if curr.get('gender') == "Masculino" else 1)
+        act_val = st.select_slider("Actividad", [1.2, 1.375, 1.55, 1.725], value=float(curr.get('activity_level', 1.2)))
+        diet_val = st.text_input("Preferencia Dieta", curr.get('diet_type', 'Omnívora'))
         
-        if st.form_submit_button("Guardar"):
+        if st.form_submit_button("Guardar Perfil"):
             try:
                 supabase.table("profiles").upsert({
-                    "id": USER_ID, "weight": w, "height": h, "age": a, "gender": g,
-                    "activity_level": act, "diet_type": diet
+                    "id": USER_ID, "weight": w_val, "height": h_val, "age": a_val, 
+                    "gender": g_val, "activity_level": act_val, "diet_type": diet_val
                 }).execute()
-                st.success("Perfil actualizado")
+                st.success("✅ Perfil actualizado en la nube.")
             except Exception as e:
                 st.error(f"Error al guardar perfil: {e}")
