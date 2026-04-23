@@ -14,21 +14,29 @@ G_KEY = "AIzaSyBm_tP0SlIJ86ERXcxMPZSvA7pEnfiPrqw"
 
 st.set_page_config(page_title="Fitness OS Pro", layout="wide", page_icon="⚡")
 
-# --- INICIALIZACIÓN ---
+# --- INICIALIZACIÓN INTELIGENTE DE IA ---
 @st.cache_resource
 def init_connections():
-    # Supabase
     sb = create_client(S_URL, S_KEY)
-    
-    # Gemini: Forzamos la configuración limpia
     genai.configure(api_key=G_KEY)
     
-    # Usamos 'gemini-1.5-flash-latest' o 'gemini-1.5-pro'
-    # 'gemini-pro' es un alias que a veces falla en versiones v1beta
-    model = genai.GenerativeModel('gemini-1.5-flash-latest')
-    return sb, model
+    # Buscamos dinámicamente qué modelo tienes disponible para evitar el 404
+    available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+    
+    # Prioridad: 1.5-flash -> 1.5-pro -> el primero que encuentre
+    selected_model = None
+    for target in ['models/gemini-1.5-flash', 'models/gemini-1.5-pro', 'models/gemini-pro']:
+        if target in available_models:
+            selected_model = target
+            break
+    
+    if not selected_model:
+        selected_model = available_models[0] if available_models else "models/gemini-pro"
+        
+    model = genai.GenerativeModel(selected_model)
+    return sb, model, selected_model
 
-supabase, gemini_model = init_connections()
+supabase, gemini_model, model_name = init_connections()
 
 # --- LÓGICA DE LOGIN ---
 with st.sidebar:
@@ -40,6 +48,8 @@ with st.sidebar:
         st.stop()
     
     st.success(f"Sesión: {user_input}")
+    st.caption(f"IA activa: {model_name}") # Para que veas cuál está usando
+    
     selected = option_menu(
         menu_title="Navegación",
         options=["Dashboard", "Entrenamientos", "Nutrición", "Ajustes"],
@@ -101,22 +111,18 @@ elif selected == "Nutrición":
         
         st.metric("Calorías Objetivo", f"{m['cal']:.0f} kcal")
         
-        if st.button("Generar Dieta con Gemini"):
+        if st.button("Generar Dieta con IA"):
             with st.spinner("Conectando con la IA..."):
-                prompt = (f"Eres un nutricionista. Crea una dieta de {m['cal']:.0f} kcal. "
+                prompt = (f"Eres un nutricionista profesional. Crea una dieta de {m['cal']:.0f} kcal. "
                          f"Macros: P:{m['p']:.0f}g, C:{m['c']:.0f}g, F:{m['f']:.0f}g. "
-                         f"Estilo: {profile['diet_type']}. Formato: Tabla Markdown.")
+                         f"Estilo: {profile['diet_type']}. Formato: Tabla Markdown con desayuno, comida y cena.")
                 try:
-                    # Intento de generación con el modelo configurado
                     resp = gemini_model.generate_content(prompt)
                     st.markdown(resp.text)
                 except Exception as e:
-                    st.error(f"Error de generación: {e}")
-                    st.info("Reintentando con modelo alternativo...")
-                    # Fallback manual en caso de error 404
-                    fallback_model = genai.GenerativeModel('gemini-1.5-pro-latest')
-                    resp = fallback_model.generate_content(prompt)
-                    st.markdown(resp.text)
+                    st.error(f"Fallo en la generación: {e}")
+                    st.info("Intentando reconectar con la API...")
+                    st.cache_resource.clear() # Forzamos recarga de modelos en el siguiente intento
 
 elif selected == "Ajustes":
     st.header(f"Perfil de {user_input.capitalize()}")
