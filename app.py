@@ -129,7 +129,17 @@ elif selected == "Ajustes":
         h = col2.number_input("Altura (cm)", 100.0, 250.0, float(curr.get('height', 175)))
         a = col1.number_input("Edad", 15, 100, int(curr.get('age', 25)))
         g = col2.selectbox("Género", ["Masculino", "Femenino"], index=0 if curr.get('gender')=="Masculino" else 1)
-        act = st.select_slider("Actividad", [1.2, 1.375, 1.55, 1.725], value=float(curr.get('activity_level', 1.2)))
+        act = st.select_slider(
+    "Nivel de Actividad Diaria",
+    options=[1.2, 1.375, 1.55, 1.725],
+    value=float(curr.get('activity_level', 1.2)),
+    format_func=lambda x: {
+        1.2: "Sedentario (Oficina/Sin ejercicio)",
+        1.375: "Ligero (Entreno 1-2 días)",
+        1.55: "Moderado (Entreno 3-5 días)",
+        1.725: "Intenso (Atleta/Trabajo físico)"
+    }[x]
+)
         diet = st.text_input("Tipo de Dieta (ej: Vegana)", curr.get('diet_type', 'Omnívora'))
         
         if st.form_submit_button("Guardar Perfil"):
