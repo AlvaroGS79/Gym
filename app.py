@@ -85,8 +85,10 @@ if sel == "Dashboard":
     
     if res.data:
         df = pd.DataFrame(res.data)
-        df['date'] = pd.to_datetime(df['date'])
-        # Cálculo de Volumen de Carga: Series * Reps * Peso
+        
+        # --- LIMPIEZA DE FECHAS ---
+        df['date'] = pd.to_datetime(df['date']).dt.strftime('%d/%m/%Y')
+        
         df['Volumen Total (kg)'] = df['sets'] * df['reps'] * df['weight_kg']
         
         tab_indiv, tab_gral = st.tabs(["🎯 Ejercicio Individual", "🌍 Vista General"])
@@ -102,8 +104,8 @@ if sel == "Dashboard":
                                 template="plotly_dark", color_discrete_sequence=['#00CC96'])
             
             fig_indiv.update_traces(textposition="top center")
+            fig_indiv.update_xaxes(type='category') # Forzamos que la fecha sea una etiqueta limpia
             st.plotly_chart(fig_indiv, use_container_width=True)
-            st.caption("💡 Los números sobre los puntos indican las repeticiones logradas.")
 
         with tab_gral:
             st.subheader("Volumen de Trabajo Total (Sobrecarga Progresiva)")
@@ -111,8 +113,9 @@ if sel == "Dashboard":
                                title="Comparativa de Volumen por Ejercicio",
                                template="plotly_dark",
                                color_discrete_sequence=px.colors.qualitative.Bold)
+            fig_gral.update_xaxes(type='category')
             st.plotly_chart(fig_gral, use_container_width=True)
-            st.write("💡 Si el área total crece hacia arriba, estás aumentando tu capacidad de trabajo.")
+            st.write("💡 El volumen total es el resultado de multiplicar Series x Repeticiones x Peso.")
     else:
         st.info("No hay registros. Guarda tus sesiones en la pestaña de Entrenamientos.")
 
